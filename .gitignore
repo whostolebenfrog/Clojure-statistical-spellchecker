@@ -7,4 +7,4 @@ pom.xml
 /.lein-failures
 /.lein-plugins
 /checkouts
-/.target/*
+/target/*
