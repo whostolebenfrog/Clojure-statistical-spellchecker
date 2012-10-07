@@ -4,53 +4,48 @@
 (defn words
   "Returns a lazy sequence of words from out input set"
   []
-  (map #(.toLowerCase %) (mapcat #(re-seq #"\w+" %) (line-seq (io/reader (io/file "big.txt"))))))
+  (map #(.toLowerCase %)
+       (mapcat #(re-seq #"\w+" %) (line-seq (io/reader (io/file "big.txt"))))))
 
-(defn train
-  "Returns a map of words from the input set to their frequencies."
-  ([]
-     (frequencies (words)))
-  ([n]
-     (frequencies (take n (words)))))
+(def nwords (delay (frequencies (words))))
 
-(def nwords (train))
-
-(defn second-has
-  "Second part of the seq has greater than n elements"
-  [seq n]
-  (filter #(not-empty (nthrest (second %) n)) seq))
-
-(defn transposed
-  "Returns f concatenated to s with its first two letters switched"
-  [f s]
-  (concat f [(second s) (first s)] (nthrest s 2)))
-
-(defn edits-distance-1
-  "The set of words that are one mistake away from our example word"
+(defn distance-1
+  "The set of words that are one difference away from our example word"
   [word]
-  (let [alphabet   (seq "abcdefghijklmnopqrstuvwxyz")
-        splits     (map #(split-at % word) (range (inc (count word))))
-        deletes    (map #(concat (first %) (rest (second %))) (second-has splits 0))
-        transposes (map #(transposed (first %) (second %)) (second-has splits 1))
-        replaces   (apply concat (for [letter alphabet]
-                                   (map #(concat (first %) [letter] (rest (second %)))
-                                        (second-has splits 0))))
-        inserts    (apply concat (for [letter alphabet]
-                                   (map #(concat (first %) [letter] (second %))
-                                        splits)))]
+  (let [alphabet (seq "abcdefghijklmnopqrstuvwxyz")
+        len      (count word)
 
-    (set (concat deletes transposes replaces inserts))))
+        dels     (for [i (range len)]
+                   (str (subs word 0 i) (subs word (inc i))))
+
+        trans    (for [i (range (dec len))]
+                   (str (subs word 0 i) (nth word (inc i))
+                        (nth word i) (subs word (+ 2 i))))
+
+        replaces (for [i (range len) l alphabet]
+                   (str (subs word 0 i) l (subs word (inc i))))
+
+        inserts  (for [i (range 1 (inc len)) l alphabet]
+                   (str (subs word 0 i) l (subs word i)))]
+
+    (distinct (concat dels trans replaces inserts))))
+
+(defn distance-2
+  [word]
+  "The set known of words that are two differences away from our example word"
+  (distinct (for [w1 (distance-1 word) w2 (distance-1 w1)]
+              w2)))
 
 (defn known
-  "Returns the union of words and our input set"
   [words]
-  (filter nwords words))
+  "Return the union of the input set and supplied sets of words or nil if empty"
+  (not-empty (set (filter @nwords words))))
 
-(defn known-edits-distance-2
+(defn correct
   [word]
-  "The set of words that are two mistakes away from our example word"
-  (filter nwords (apply concat (for [w1 (edits-distance-1 word)]
-                                 (for [w2 (edits-distance-1 w1)]
-                                   w2)))))
-
-(filter #{"the"} (edits-distance-1 "th"))
+  "Returns the word if in input set, or our correction"
+  (let [candidates (or (known [word])
+                       (known (distance-1 word))
+                       (known (distance-2 word))
+                       [word])]
+    (apply max-key #(@nwords %) candidates)))
